@@ -54,3 +54,23 @@ class JobMapper:
             locked_by=orm.locked_by,
             locked_at=orm.locked_at,
         )
+
+
+    @staticmethod
+    def update_orm_from_domain(job: Job, orm: JobOrm) -> None:
+        orm.queue = job.queue
+        orm.name = job.name
+        orm.tenant_id = job.tenant_id
+        orm.payload = job.payload
+        orm.state = job.state.value
+        orm.priority = job.priority
+        orm.created_at = job.created_at
+        orm.updated_at = job.updated_at
+        orm.scheduled_at = job.scheduled_at
+        orm.next_run_at = job.next_run_at
+        orm.last_run_at = job.last_run_at
+        orm.attempts = job.attempts
+        orm.max_attempts = job.max_attempts
+        orm.archived = job.archived
+        orm.locked_by = job.locked_by
+        orm.locked_at = job.locked_at

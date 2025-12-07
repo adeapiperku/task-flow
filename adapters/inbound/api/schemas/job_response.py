@@ -1,4 +1,3 @@
-# adapters/inbound/api/schemas.py
 from __future__ import annotations
 
 from datetime import datetime
@@ -8,7 +7,6 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from domain.models.job import Job
-
 
 class JobResponse(BaseModel):
     id: UUID

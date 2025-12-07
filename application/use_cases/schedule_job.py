@@ -24,3 +24,4 @@ class ScheduleJobUseCase:
         async with self._uow_factory() as uow:
             stored = await uow.job_repo.insert(job)
             return stored
+

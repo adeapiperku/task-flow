@@ -1,4 +1,9 @@
+from sqlalchemy.ext.asyncio.session import AsyncSession
+
+from adapters.outbound.db.base import AsyncSessionLocal
+from adapters.outbound.db.job_repository_impl import JobRepositorySqlAlchemy
 from application.uow import UnitOfWork
+from domain.ports.job_repository import JobRepository
 
 
 class SqlAlchemyUnitOfWork(UnitOfWork):

@@ -98,3 +98,42 @@ class Job:
         if "updated_at" not in changes:
             data["updated_at"] = datetime.utcnow()
         return Job(**data)
+
+    def __str__(self) -> str:
+        return f"Job(id={self.id}, name={self.name}, state={self.state}, queue={self.queue})"
+
+    def __repr__(self) -> str:
+        return (
+            f"Job(id={self.id!r}, queue={self.queue!r}, name={self.name!r}, "
+            f"tenant_id={self.tenant_id!r}, state={self.state!r}, priority={self.priority!r}, "
+            f"created_at={self.created_at!r}, updated_at={self.updated_at!r}, "
+            f"scheduled_at={self.scheduled_at!r}, next_run_at={self.next_run_at!r}, "
+            f"last_run_at={self.last_run_at!r}, attempts={self.attempts!r}, "
+            f"max_attempts={self.max_attempts!r}, archived={self.archived!r}, "
+            f"locked_by={self.locked_by!r}, locked_at={self.locked_at!r})"
+        )
+
+    def mark_running(self, worker_id: str, now: datetime) -> "Job":
+        return self._replace(
+            state=JobState.RUNNING,
+            locked_by=worker_id,
+            locked_at=now,
+            last_run_at=now,
+            attempts=self.attempts + 1,
+        )
+    def mark_succeeded(self, now: datetime) -> "Job":
+        return self._replace(
+            state=JobState.SUCCEEDED,
+            locked_by=None,
+            locked_at=None,
+            last_run_at=now,
+        )
+    def mark_failed(self, now: datetime, *, dead: bool = False) -> "Job":
+        return self._replace(
+            state=JobState.DEAD if dead else JobState.FAILED,
+            locked_by=None,
+            locked_at=None,
+            last_run_at=now,
+        )
+
+
