@@ -40,7 +40,7 @@ Core domain objects (present and planned):
 
 Use cases orchestrate domain logic and persistence behind ports (interfaces):
 
-- `ScheduleJobUseCase` ✅
+- `ScheduleJobUseCase` 
 - `GetJobByIdUseCase` 
 - `ListJobsUseCase` ; filters by tenant, queue, state, etc.)
 - `CancelJobUseCase` 
