@@ -22,10 +22,12 @@ class SqlAlchemyUnitOfWork(UnitOfWork):
     def __init__(self):
         self._session: AsyncSession | None = None
         self.job_repo: JobRepository | None = None
+        self.job_attempt_repo: JobRepository | None = None
 
     async def __aenter__(self) -> "SqlAlchemyUnitOfWork":
         self._session = AsyncSessionLocal()
         self.job_repo = JobRepositorySqlAlchemy(self._session)
+        self.job_attempt_repo = JobAttemptRepositorySqlAlchemy(self._session)
         return self
 
     async def __aexit__(self, exc_type, exc, tb) -> None:
