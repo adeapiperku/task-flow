@@ -1,11 +1,10 @@
-# domain/models/job.py
-from __future__ import annotations
-
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, Optional
 from uuid import UUID, uuid4
+
+from domain.models.retry_policy import RetryPolicy, RetryStrategy
 
 
 class JobState(str, Enum):
@@ -23,9 +22,8 @@ class Job:
     Domain representation of a job.
 
     This is intentionally independent of the DB layer.
-    It models the behaviour and invariants of a job,
-    not how it is stored.
     """
+
     id: UUID
     queue: str
     name: str
@@ -44,7 +42,8 @@ class Job:
     locked_by: Optional[str]
     locked_at: Optional[datetime]
 
-    # ---------- factory methods ----------
+    retry_policy: RetryPolicy
+
 
     @staticmethod
     def new(
@@ -56,12 +55,17 @@ class Job:
         priority: int = 0,
         scheduled_at: Optional[datetime] = None,
         max_attempts: int = 3,
+        retry_strategy: RetryStrategy = RetryStrategy.EXPONENTIAL,
+        retry_base_delay_seconds: int = 30,
     ) -> "Job":
         """
         Factory for creating a new job with sane defaults.
-        This is the only place where a "fresh" Job should be created.
         """
         now = datetime.utcnow()
+        policy = RetryPolicy(
+            strategy=retry_strategy,
+            base_delay_seconds=retry_base_delay_seconds,
+        )
         return Job(
             id=uuid4(),
             queue=queue,
@@ -73,13 +77,14 @@ class Job:
             created_at=now,
             updated_at=now,
             scheduled_at=scheduled_at,
-            next_run_at=scheduled_at,  # simple v0 behaviour
+            next_run_at=scheduled_at,
             last_run_at=None,
             attempts=0,
             max_attempts=max_attempts,
             archived=False,
             locked_by=None,
             locked_at=None,
+            retry_policy=policy,
         )
 
     def mark_scheduled(self, when: datetime) -> "Job":
@@ -88,52 +93,58 @@ class Job:
             next_run_at=when,
         )
 
+    def mark_succeeded(self, *, now: Optional[datetime] = None) -> "Job":
+        now = now or datetime.utcnow()
+        return self._replace(
+            state=JobState.SUCCEEDED,
+            last_run_at=now,
+            next_run_at=None,
+            locked_by=None,
+            locked_at=None,
+        )
+
+    def apply_failure(
+        self,
+        *,
+        now: Optional[datetime] = None,
+    ) -> "Job":
+        """
+        Apply a failure according to this job's retry policy.
+
+        - increments attempts
+        - either schedules a retry (state=SCHEDULED, next_run_at in future)
+        - or marks job DEAD when attempts exhausted
+        """
+        now = now or datetime.utcnow()
+        attempts = self.attempts + 1
+
+        next_run_at = self.retry_policy.compute_next_run_at(
+            attempts_after_increment=attempts,
+            max_attempts=self.max_attempts,
+            now=now,
+        )
+
+        if next_run_at is None:
+            return self._replace(
+                attempts=attempts,
+                state=JobState.DEAD,
+                last_run_at=now,
+                next_run_at=None,
+                locked_by=None,
+                locked_at=None,
+            )
+
+        return self._replace(
+            attempts=attempts,
+            state=JobState.SCHEDULED,
+            last_run_at=now,
+            next_run_at=next_run_at,
+            locked_by=None,
+            locked_at=None,
+        )
+
     def _replace(self, **changes: Any) -> "Job":
-        """
-        Internal helper to preserve immutability (frozen dataclass).
-        Returns a new instance with updated fields.
-        """
         data = {**self.__dict__, **changes}
-        # ensure updated_at always moves forward
         if "updated_at" not in changes:
             data["updated_at"] = datetime.utcnow()
         return Job(**data)
-
-    def __str__(self) -> str:
-        return f"Job(id={self.id}, name={self.name}, state={self.state}, queue={self.queue})"
-
-    def __repr__(self) -> str:
-        return (
-            f"Job(id={self.id!r}, queue={self.queue!r}, name={self.name!r}, "
-            f"tenant_id={self.tenant_id!r}, state={self.state!r}, priority={self.priority!r}, "
-            f"created_at={self.created_at!r}, updated_at={self.updated_at!r}, "
-            f"scheduled_at={self.scheduled_at!r}, next_run_at={self.next_run_at!r}, "
-            f"last_run_at={self.last_run_at!r}, attempts={self.attempts!r}, "
-            f"max_attempts={self.max_attempts!r}, archived={self.archived!r}, "
-            f"locked_by={self.locked_by!r}, locked_at={self.locked_at!r})"
-        )
-
-    def mark_running(self, worker_id: str, now: datetime) -> "Job":
-        return self._replace(
-            state=JobState.RUNNING,
-            locked_by=worker_id,
-            locked_at=now,
-            last_run_at=now,
-            attempts=self.attempts + 1,
-        )
-    def mark_succeeded(self, now: datetime) -> "Job":
-        return self._replace(
-            state=JobState.SUCCEEDED,
-            locked_by=None,
-            locked_at=None,
-            last_run_at=now,
-        )
-    def mark_failed(self, now: datetime, *, dead: bool = False) -> "Job":
-        return self._replace(
-            state=JobState.DEAD if dead else JobState.FAILED,
-            locked_by=None,
-            locked_at=None,
-            last_run_at=now,
-        )
-
-

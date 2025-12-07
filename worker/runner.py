@@ -1,34 +1,24 @@
 # worker/runner.py
 import asyncio
 import logging
+from datetime import datetime
 from uuid import uuid4
 
 from adapters.outbound.db.uow_sqlalchemy import SqlAlchemyUnitOfWork
 from application.use_cases.acquire_next_job import AcquireNextJobUseCase
 from application.use_cases.complete_job import CompleteJobUseCase
 from application.use_cases.fail_job import FailJobUseCase
+from handlers import HANDLERS
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 
-async def process_image(payload: dict):
-    image_id = payload.get("image_id")
-    logger.info("Pretend processing image %s", image_id)
-    await asyncio.sleep(0.5)
-
-
-HANDLERS = {
-    "process-image": process_image,
-}
-
-
 async def dispatch_job(job):
     handler = HANDLERS.get(job.name)
     if handler is None:
-        raise RuntimeError(f"No handler for job {job.name}")
-
-    return await handler(job.payload)
+        raise RuntimeError(f"No handler found for job '{job.name}'")
+    await handler(job.payload)
 
 
 async def worker_loop(queue: str = "default") -> None:
@@ -49,14 +39,25 @@ async def worker_loop(queue: str = "default") -> None:
 
         logger.info("Worker %s processing job %s (%s)", worker_id, job.id, job.name)
 
+        started_at = datetime.utcnow()
         try:
             await dispatch_job(job)
-        except Exception:
+        except Exception as exc:
+            finished_at = datetime.utcnow()
             logger.exception("Job %s failed", job.id)
-            await fail_uc.execute(job.id)
+            await fail_uc.execute(
+                job.id,
+                started_at=started_at,
+                finished_at=finished_at,
+                worker_id=worker_id,
+                error_type=exc.__class__.__name__,
+                error_message=str(exc),
+            )
         else:
-            await complete_uc.execute(job.id)
-
-
-if __name__ == "__main__":
-    asyncio.run(worker_loop(queue="media"))
+            finished_at = datetime.utcnow()
+            await complete_uc.execute(
+                job.id,
+                started_at=started_at,
+                finished_at=finished_at,
+                worker_id=worker_id,
+            )

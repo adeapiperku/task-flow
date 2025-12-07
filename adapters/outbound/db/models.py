@@ -11,13 +11,26 @@ from sqlalchemy import (
     SmallInteger,
     JSON,
     Boolean,
-    Index,
+    Index, Column,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from adapters.outbound.db.base import Base
+from uuid import uuid4
+from sqlalchemy import (
+    Column,
+    String,
+    Integer,
+    Boolean,
+    DateTime,
+    Text,
+    ForeignKey,
+)
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.orm import relationship
 
+from adapters.outbound.db.base import Base
 
 class JobOrm(Base):
     """
@@ -134,6 +147,8 @@ class JobOrm(Base):
         nullable=True,
     )
 
+    retry_strategy = Column(String(32), nullable=False, server_default="EXPONENTIAL")
+    retry_base_delay_seconds = Column(Integer, nullable=False, server_default="30")
 
 # Indexes that matter for scheduling performance:
 Index(
@@ -148,3 +163,23 @@ Index(
     JobOrm.tenant_id,
     JobOrm.state,
 )
+
+class JobAttemptOrm(Base):
+    __tablename__ = "job_attempts"
+
+    id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    job_id = Column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("jobs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    attempt_number = Column(Integer, nullable=False)
+    started_at = Column(DateTime(timezone=True), nullable=False)
+    finished_at = Column(DateTime(timezone=True), nullable=False)
+    success = Column(Boolean, nullable=False)
+    error_type = Column(String(255), nullable=True)
+    error_message = Column(Text, nullable=True)
+    worker_id = Column(String(255), nullable=True)
+
+    job = relationship("JobOrm", backref="attempts")

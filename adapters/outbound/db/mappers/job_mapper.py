@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from adapters.outbound.db.models import JobOrm
 from domain.models.job import Job, JobState
+from domain.models.retry_policy import RetryPolicy, RetryStrategy
 
 
 class JobMapper:
@@ -31,10 +32,16 @@ class JobMapper:
             archived=job.archived,
             locked_by=job.locked_by,
             locked_at=job.locked_at,
+            retry_strategy=job.retry_policy.strategy.value,
+            retry_base_delay_seconds=job.retry_policy.base_delay_seconds,
         )
 
     @staticmethod
     def to_domain(orm: JobOrm) -> Job:
+        policy = RetryPolicy(
+            strategy=RetryStrategy(orm.retry_strategy),
+            base_delay_seconds=orm.retry_base_delay_seconds,
+        )
         return Job(
             id=orm.id,
             queue=orm.queue,
@@ -53,6 +60,8 @@ class JobMapper:
             archived=orm.archived,
             locked_by=orm.locked_by,
             locked_at=orm.locked_at,
+            retry_policy=policy,
+
         )
 
 
