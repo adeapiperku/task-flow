@@ -41,11 +41,11 @@ Core domain objects (present and planned):
 Use cases orchestrate domain logic and persistence behind ports (interfaces):
 
 - `ScheduleJobUseCase` ✅
-- `GetJobByIdUseCase` (planned)
-- `ListJobsUseCase` (planned; filters by tenant, queue, state, etc.)
-- `CancelJobUseCase` (planned)
-- `RetryJobUseCase` (planned)
-- `DefineAutomationRuleUseCase` (planned)
+- `GetJobByIdUseCase` 
+- `ListJobsUseCase` ; filters by tenant, queue, state, etc.)
+- `CancelJobUseCase` 
+- `RetryJobUseCase` 
+- `DefineAutomationRuleUseCase`
 - `TriggerAutomationUseCase` (for webhooks/events, planned)
 
 ### Adapters
