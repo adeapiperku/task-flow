@@ -4,6 +4,7 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from adapters.outbound.db.base import AsyncSessionLocal
+from adapters.outbound.db.job_attempt_repository_impl import JobAttemptRepositorySqlAlchemy
 from adapters.outbound.db.job_repository_impl import JobRepositorySqlAlchemy
 from application.uow import UnitOfWork
 from domain.ports.job_repository import JobRepository

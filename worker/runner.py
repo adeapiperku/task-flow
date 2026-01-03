@@ -19,8 +19,6 @@ async def dispatch_job(job):
     if handler is None:
         raise RuntimeError(f"No handler found for job '{job.name}'")
     await handler(job.payload)
-
-
 async def worker_loop(queue: str = "default") -> None:
     worker_id = f"worker-{uuid4()}"
 

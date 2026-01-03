@@ -11,7 +11,7 @@ from sqlalchemy import (
     SmallInteger,
     JSON,
     Boolean,
-    Index, Column,
+    Index, Column, TIMESTAMP, func,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -183,3 +183,24 @@ class JobAttemptOrm(Base):
     worker_id = Column(String(255), nullable=True)
 
     job = relationship("JobOrm", backref="attempts")
+
+class JobDefinitionOrm(Base):
+    __tablename__ = "job_definitions"
+
+    name: Mapped[str] = mapped_column(Text, primary_key=True)
+
+    handler_ref: Mapped[str] = mapped_column(Text, nullable=False)
+    execution_mode: Mapped[str] = mapped_column(Text, nullable=False, default="python_async")
+
+    timeout_s: Mapped[int] = mapped_column(Integer, nullable=False, default=300)
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+
+    backoff_policy: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    input_schema: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    resource_profile: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    capabilities: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    created_at: Mapped = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
