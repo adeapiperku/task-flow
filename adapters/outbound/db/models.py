@@ -146,6 +146,11 @@ class JobOrm(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        index=True,  # Index for lease expiration queries
+    )
 
     retry_strategy = Column(String(32), nullable=False, server_default="EXPONENTIAL")
     retry_base_delay_seconds = Column(Integer, nullable=False, server_default="30")
