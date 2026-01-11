@@ -8,13 +8,20 @@ from sqlalchemy import (
     String,
     DateTime,
     Integer,
+    UUID as PG_UUID,
     SmallInteger,
     JSON,
     Boolean,
-    Index, Column, TIMESTAMP, func,
+    Index,
+    Column,
+    TIMESTAMP,
+    func,
+    Text,
+    ForeignKey,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from adapters.outbound.db.base import Base
 from uuid import uuid4
@@ -172,7 +179,7 @@ Index(
 class JobAttemptOrm(Base):
     __tablename__ = "job_attempts"
 
-    id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     job_id = Column(
         PG_UUID(as_uuid=True),
         ForeignKey("jobs.id", ondelete="CASCADE"),
@@ -187,7 +194,7 @@ class JobAttemptOrm(Base):
     error_message = Column(Text, nullable=True)
     worker_id = Column(String(255), nullable=True)
 
-    job = relationship("JobOrm", backref="attempts")
+    job = relationship("JobOrm", backref="attempts_list")
 
 class JobDefinitionOrm(Base):
     __tablename__ = "job_definitions"
@@ -209,5 +216,7 @@ class JobDefinitionOrm(Base):
 
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
-    created_at: Mapped = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
-    updated_at: Mapped = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    # created_at: Mapped = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+    # updated_at: Mapped = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
