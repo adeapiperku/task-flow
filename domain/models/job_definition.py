@@ -19,4 +19,5 @@ class JobDefinition:
     input_schema: Mapping[str, Any]     # jsonschema or your own schema
     resource_profile: Mapping[str, Any] # e.g. {"cpu":1,"mem_mb":256}
     capabilities: list[str]            # e.g. ["network", "smtp"]
+    visibility_timeout_s: int          # Lease duration for job acquisition
     version: int

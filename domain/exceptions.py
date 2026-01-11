@@ -60,3 +60,17 @@ class JobAlreadyExistsError(ConflictError):
 
     def default_message(self) -> str:
         return "Job already exists."
+
+
+class JobDefinitionNotFoundError(NotFoundError):
+    error_code = "job_definition_not_found"
+
+    def default_message(self) -> str:
+        return "Job definition not found."
+
+
+class HandlerNotFoundError(NotFoundError):
+    error_code = "handler_not_found"
+
+    def default_message(self) -> str:
+        return "Handler not found."

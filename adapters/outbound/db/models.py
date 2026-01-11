@@ -200,6 +200,8 @@ class JobDefinitionOrm(Base):
     resource_profile: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     capabilities: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
 
+    visibility_timeout_s: Mapped[int] = mapped_column(Integer, nullable=False, default=300)
+
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
     created_at: Mapped = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
