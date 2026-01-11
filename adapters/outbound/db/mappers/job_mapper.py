@@ -32,6 +32,7 @@ class JobMapper:
             archived=job.archived,
             locked_by=job.locked_by,
             locked_at=job.locked_at,
+            lease_expires_at=job.lease_expires_at,
             retry_strategy=job.retry_policy.strategy.value,
             retry_base_delay_seconds=job.retry_policy.base_delay_seconds,
         )
@@ -60,8 +61,8 @@ class JobMapper:
             archived=orm.archived,
             locked_by=orm.locked_by,
             locked_at=orm.locked_at,
+            lease_expires_at=orm.lease_expires_at,
             retry_policy=policy,
-
         )
 
 
@@ -83,3 +84,4 @@ class JobMapper:
         orm.archived = job.archived
         orm.locked_by = job.locked_by
         orm.locked_at = job.locked_at
+        orm.lease_expires_at = job.lease_expires_at

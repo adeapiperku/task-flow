@@ -49,6 +49,7 @@ class JobRepository(Protocol):
             queue: str,
             now: datetime,
             worker_id: str,
+            visibility_timeout_s: int = 300,
     ) -> Job | None:
         """
         Atomically select and lock the next runnable job for a worker.
@@ -61,8 +62,11 @@ class JobRepository(Protocol):
         - ordered by priority DESC, created_at ASC
 
         Side effects:
-        - Sets locked_by, locked_at
+        - Sets locked_by, locked_at, lease_expires_at
         - Sets state to RUNNING
+
+        Args:
+            visibility_timeout_s: Lease duration in seconds (default: 300)
 
         Returns:
         - Job if one was acquired

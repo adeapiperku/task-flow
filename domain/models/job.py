@@ -41,6 +41,7 @@ class Job:
     archived: bool
     locked_by: Optional[str]
     locked_at: Optional[datetime]
+    lease_expires_at: Optional[datetime]  # When the lease expires (for heartbeat/reclaim)
 
     retry_policy: RetryPolicy
 
@@ -84,6 +85,7 @@ class Job:
             archived=False,
             locked_by=None,
             locked_at=None,
+            lease_expires_at=None,
             retry_policy=policy,
         )
 
@@ -101,6 +103,7 @@ class Job:
             next_run_at=None,
             locked_by=None,
             locked_at=None,
+            lease_expires_at=None,
         )
 
     def apply_failure(
@@ -132,6 +135,7 @@ class Job:
                 next_run_at=None,
                 locked_by=None,
                 locked_at=None,
+                lease_expires_at=None,
             )
 
         return self._replace(
@@ -141,6 +145,51 @@ class Job:
             next_run_at=next_run_at,
             locked_by=None,
             locked_at=None,
+            lease_expires_at=None,
+        )
+
+    def acquire_lease(
+        self,
+        *,
+        worker_id: str,
+        visibility_timeout_s: int,
+        now: Optional[datetime] = None,
+    ) -> "Job":
+        """
+        Acquire a lease on this job for a worker.
+        
+        Sets:
+        - state to RUNNING
+        - locked_by to worker_id
+        - locked_at to now
+        - lease_expires_at to now + visibility_timeout_s
+        """
+        now = now or datetime.utcnow()
+        from datetime import timedelta
+        return self._replace(
+            state=JobState.RUNNING,
+            locked_by=worker_id,
+            locked_at=now,
+            lease_expires_at=now + timedelta(seconds=visibility_timeout_s),
+        )
+
+    def extend_lease(
+        self,
+        *,
+        visibility_timeout_s: int,
+        now: Optional[datetime] = None,
+    ) -> "Job":
+        """
+        Extend the lease expiration time (heartbeat).
+        
+        Args:
+            visibility_timeout_s: New visibility timeout in seconds
+            now: Current time (defaults to utcnow)
+        """
+        now = now or datetime.utcnow()
+        from datetime import timedelta
+        return self._replace(
+            lease_expires_at=now + timedelta(seconds=visibility_timeout_s),
         )
 
     def _replace(self, **changes: Any) -> "Job":

@@ -73,10 +73,13 @@ class JobRepositorySqlAlchemy(JobRepository):
             queue: str,
             now: datetime,
             worker_id: str,
+            visibility_timeout_s: int = 300,
     ) -> Job | None:
         """
         Atomically select and lock the next runnable job for a worker.
         """
+        from datetime import timedelta
+        
         try:
             stmt = (
                 select(JobOrm)
@@ -101,15 +104,22 @@ class JobRepositorySqlAlchemy(JobRepository):
             if orm is None:
                 return None
 
-            orm.locked_by = worker_id
-            orm.locked_at = now
-            orm.state = JobState.RUNNING.value
+            # Use domain method to acquire lease
+            job = JobMapper.to_domain(orm)
+            leased_job = job.acquire_lease(
+                worker_id=worker_id,
+                visibility_timeout_s=visibility_timeout_s,
+                now=now,
+            )
+            
+            # Update ORM from leased job
+            JobMapper.update_orm_from_domain(leased_job, orm)
             orm.last_run_at = now
             orm.attempts = (orm.attempts or 0) + 1
 
             await self._session.flush()
 
-            return JobMapper.to_domain(orm)
+            return leased_job
 
         except SQLAlchemyError as exc:
             raise RepositoryError("Database operation failed") from exc
