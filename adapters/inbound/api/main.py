@@ -1,11 +1,45 @@
-# adapters/inbound/api/main.py
-from fastapi import FastAPI
+# # adapters/inbound/api/main.py
+# from fastapi import FastAPI
+# from adapters.inbound.api.error_handlers import register_error_handlers
+# from adapters.inbound.api.routers import jobs
+
+# app = FastAPI(title="task-flow")
+
+# register_error_handlers(app)
+
+# # All job-related endpoints are in jobs.router
+# app.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
+
+from fastapi import FastAPI, Depends
+from fastapi.middleware.cors import CORSMiddleware
+
 from adapters.inbound.api.error_handlers import register_error_handlers
-from adapters.inbound.api.routers import jobs
+from adapters.inbound.api.routers import jobs, automation_rules
+from adapters.outbound.db.uow_sqlalchemy import SqlAlchemyUnitOfWork
+from domain.ports.automation_rule_repository import AutomationRuleRepository
 
-app = FastAPI(title="task-flow")
+app = FastAPI(
+    title="TaskFlow API",
+    description="TaskFlow - Job Automation Engine",
+    version="0.1.0",
+)
 
+# Register error handlers
 register_error_handlers(app)
 
-# All job-related endpoints are in jobs.router
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Dependencies
+def get_automation_rule_repository() -> AutomationRuleRepository:
+    return SqlAlchemyUnitOfWork().automation_rules
+
+# Include routers
 app.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
+app.include_router(automation_rules.router)
