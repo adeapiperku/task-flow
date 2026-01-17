@@ -2,7 +2,7 @@ import subprocess
 import sys
 
 tasks = {
-    "dev": ["uvicorn", "adapters.inbound.api.main:app", "--reload", "--host", "127.0.0.1", "--port", "8000"],
+    "dev": ["python", "-m", "uvicorn", "adapters.inbound.api.main:app", "--reload", "--host", "127.0.0.1", "--port", "8000"],
     "prod": ["uvicorn", "adapters.inbound.api.main:app", "--host", "0.0.0.0", "--port", "8000"],
     "worker": ["python", "-m", "worker.runner"],
     "test": ["pytest"],
