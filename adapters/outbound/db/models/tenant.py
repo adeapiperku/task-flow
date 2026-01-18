@@ -2,7 +2,6 @@ from sqlalchemy import Column, UUID, String, Integer, Boolean
 
 from adapters.outbound.db.base import Base
 
-
 class TenantOrm(Base):
     __tablename__ = "tenants"
 
