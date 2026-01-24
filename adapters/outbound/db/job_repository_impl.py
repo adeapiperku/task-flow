@@ -301,3 +301,11 @@ class JobRepositorySqlAlchemy(JobRepository):
         except SQLAlchemyError as exc:
             raise RepositoryError("Database operation failed") from exc
 
+    async def get_all(self) -> list[Job]:
+        """Retrieve all jobs."""
+        try:
+            result = await self._session.execute(select(JobOrm))
+            jobs = [JobMapper.to_domain(orm) for orm in result.scalars().all()]
+            return jobs
+        except SQLAlchemyError as exc:
+            raise RepositoryError("Failed to fetch all jobs") from exc

@@ -1,6 +1,7 @@
 # adapters/inbound/api/routers/jobs.py
 from __future__ import annotations
 
+from typing import List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -10,6 +11,7 @@ from adapters.inbound.api.schemas.job_response import JobResponse
 from application.dto.schedule_job_command import ScheduleJobCommand
 from application.use_cases.schedule_job import ScheduleJobUseCase
 from application.use_cases.get_job_by_id import GetJobByIdUseCase
+from application.use_cases.get_all_jobs import GetAllJobsUseCase
 
 router = APIRouter()
 
@@ -22,6 +24,10 @@ def get_get_job_by_id_use_case() -> GetJobByIdUseCase:
     return GetJobByIdUseCase(uow_factory=SqlAlchemyUnitOfWork)
 
 
+def get_get_all_jobs_use_case() -> GetAllJobsUseCase:
+    return GetAllJobsUseCase(uow_factory=SqlAlchemyUnitOfWork)
+
+
 @router.post("", response_model=JobResponse, status_code=201)
 async def schedule_job(
     cmd: ScheduleJobCommand,
@@ -30,6 +36,13 @@ async def schedule_job(
     job = await use_case.execute(cmd)
     return JobResponse.from_domain(job)
 
+@router.get("", response_model=List[JobResponse])
+async def list_jobs(
+    use_case: GetAllJobsUseCase = Depends(get_get_all_jobs_use_case),
+):
+    """List all jobs."""
+    jobs = await use_case.execute()
+    return jobs
 
 @router.get("/{job_id}", response_model=JobResponse)
 async def get_job(

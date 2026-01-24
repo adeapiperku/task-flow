@@ -14,24 +14,19 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# Register error handlers
-register_error_handlers(app)
-
-# Add CORS middleware
+# CORS middleware should be one of the first middlewares to be added
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # For development only, restrict in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Dependencies
-def get_automation_rule_repository() -> AutomationRuleRepository:
-    return SqlAlchemyUnitOfWork().automation_rules
+# Then register error handlers and other middleware
+register_error_handlers(app)
 
-# Include routers
-# # All job-related endpoints are in jobs.router
+# Then include routers
 app.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
 app.include_router(automation_rules.router)
 app.include_router(events.router)
