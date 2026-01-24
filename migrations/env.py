@@ -8,8 +8,6 @@ from sqlalchemy import engine_from_config, pool, create_engine
 # Import your Base and models so Alembic sees them
 from adapters.outbound.db.base import Base
 from adapters.outbound.db import models  # noqa: F401
-from adapters.outbound.db.QueueOrm import QueueOrm  # noqa: F401
-from adapters.outbound.db.TenantOrm import TenantOrm  # noqa: F401
 from config.settings import settings
 
 # Alembic Config object

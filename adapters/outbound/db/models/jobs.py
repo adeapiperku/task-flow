@@ -30,8 +30,10 @@ class JobOrm(Base):
     # Logical queue name (e.g. "default", "gpu", "emails")
     queue: Mapped[str] = mapped_column(
         String(64),
+        ForeignKey("queues.name", ondelete="RESTRICT"),
         default="default",
         nullable=False,
+        index=True,
     )
 
     # For debugging / observability (not necessarily unique)
