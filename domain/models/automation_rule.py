@@ -7,6 +7,12 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
 from domain.models.job import Job
+from domain.validators import (
+    evaluate_condition,
+    validate_not_empty,
+    validate_in_enum,
+    ConditionOperator, ValidationError
+)
 
 
 class TriggerType(str, Enum):
@@ -56,8 +62,9 @@ class AutomationRule:
     created_by: str
     tags: Dict[str, str] = field(default_factory=dict)
 
-    @staticmethod
+    @classmethod
     def create(
+        cls,
         name: str,
         description: str,
         tenant_id: str,
@@ -67,9 +74,42 @@ class AutomationRule:
         conditions: Optional[List[Condition]] = None,
         tags: Optional[Dict[str, str]] = None,
     ) -> 'AutomationRule':
-        """Factory method to create a new AutomationRule."""
+        """
+        Factory method to create a new AutomationRule with validation.
+        
+        Args:
+            name: Name of the rule
+            description: Description of the rule
+            tenant_id: ID of the tenant this rule belongs to
+            trigger: The trigger configuration
+            actions: List of actions to execute when the rule is triggered
+            created_by: ID of the user creating the rule
+            conditions: Optional list of conditions that must be met
+            tags: Optional key-value pairs for categorization
+            
+        Returns:
+            A new AutomationRule instance
+            
+        Raises:
+            ValidationError: If any validation fails
+        """
+        # Validate required fields
+        validate_not_empty(name, "name")
+        validate_not_empty(tenant_id, "tenant_id")
+        validate_not_empty(created_by, "created_by")
+        
+        if not actions:
+            raise ValidationError(
+                "At least one action is required",
+                field="actions",
+                code="missing_actions"
+            )
+            
+        # Validate trigger type
+        validate_in_enum(trigger.type, TriggerType, "trigger.type")
+        
         now = datetime.utcnow()
-        return AutomationRule(
+        return cls(
             id=uuid4(),
             name=name,
             description=description,
@@ -99,21 +139,18 @@ class AutomationRule:
         return True
 
     def _evaluate_condition(self, condition: Condition, value: Any) -> bool:
-        """Evaluate a single condition."""
+        """Evaluate a single condition using the centralized validator."""
         try:
-            if condition.operator == 'eq':
-                return value == condition.value
-            elif condition.operator == 'neq':
-                return value != condition.value
-            elif condition.operator == 'gt':
-                return value > condition.value
-            elif condition.operator == 'lt':
-                return value < condition.value
-            elif condition.operator == 'contains':
-                return condition.value in value
-            # Add more operators as needed
-            return False
-        except (TypeError, AttributeError):
+            return evaluate_condition(
+                field=condition.field,
+                operator=condition.operator,
+                expected_value=condition.value,
+                context={condition.field: value}
+            )
+        except ValueError:
+            # Log warning about unsupported operator
+            import logging
+            logging.warning(f"Unsupported operator in condition: {condition.operator}")
             return False
 
     def generate_jobs(self) -> List[Job]:
