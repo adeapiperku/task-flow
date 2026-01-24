@@ -98,6 +98,7 @@ class Job:
     def mark_succeeded(self, *, now: Optional[datetime] = None) -> "Job":
         now = now or datetime.utcnow()
         return self._replace(
+            attempts=self.attempts + 1,
             state=JobState.SUCCEEDED,
             last_run_at=now,
             next_run_at=None,

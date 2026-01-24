@@ -36,7 +36,7 @@ class FailJobUseCase:
 
             attempt_number = job.attempts + 1
 
-            updated = job.apply_failure()
+            updated = job.apply_failure(now=finished_at)
             stored_job = await uow.job_repo.update(updated)
 
             attempt = JobAttempt.new(

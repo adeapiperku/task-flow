@@ -4,11 +4,12 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, func, and_, or_, cast, String
+from sqlalchemy.orm import aliased
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from adapters.outbound.db.mappers.job_mapper import JobMapper
-from adapters.outbound.db.models import JobOrm
+from adapters.outbound.db.models import JobOrm, QueueOrm, TenantOrm
 from domain.models.job import Job, JobState
 from domain.ports.job_repository import JobRepository
 from domain.exceptions import JobAlreadyExistsError, RepositoryError
@@ -81,8 +82,43 @@ class JobRepositorySqlAlchemy(JobRepository):
         from datetime import timedelta
         
         try:
+            # Enforce queue-level concurrency limits when configured
+            queue_stmt = select(QueueOrm.max_concurrency, QueueOrm.active).where(
+                QueueOrm.name == queue
+            )
+            queue_result = await self._session.execute(queue_stmt)
+            queue_row = queue_result.first()
+            if queue_row:
+                max_concurrency, active = queue_row
+                if not active:
+                    return None
+                running_in_queue = await self._session.execute(
+                    select(func.count())
+                    .select_from(JobOrm)
+                    .where(
+                        JobOrm.queue == queue,
+                        JobOrm.state == JobState.RUNNING.value,
+                        JobOrm.archived.is_(False),
+                    )
+                )
+                if running_in_queue.scalar_one() >= max_concurrency:
+                    return None
+
+            running_jobs = aliased(JobOrm)
+            running_count = (
+                select(func.count())
+                .select_from(running_jobs)
+                .where(
+                    running_jobs.state == JobState.RUNNING.value,
+                    running_jobs.tenant_id == JobOrm.tenant_id,
+                )
+                .correlate(JobOrm)
+                .scalar_subquery()
+            )
+
             stmt = (
                 select(JobOrm)
+                .outerjoin(TenantOrm, cast(TenantOrm.id, String) == JobOrm.tenant_id)
                 .where(
                     JobOrm.queue == queue,
                     JobOrm.archived.is_(False),
@@ -90,6 +126,13 @@ class JobRepositorySqlAlchemy(JobRepository):
                         [JobState.PENDING.value, JobState.SCHEDULED.value]
                     ),
                     (JobOrm.next_run_at.is_(None) | (JobOrm.next_run_at <= now)),
+                    or_(
+                        JobOrm.tenant_id.is_(None),
+                        and_(
+                            TenantOrm.active.is_(True),
+                            running_count < TenantOrm.max_running_jobs,
+                        ),
+                    ),
                 )
                 .order_by(
                     JobOrm.priority.desc(),
@@ -114,13 +157,39 @@ class JobRepositorySqlAlchemy(JobRepository):
             
             # Update ORM from leased job
             JobMapper.update_orm_from_domain(leased_job, orm)
-            orm.last_run_at = now
-            orm.attempts = (orm.attempts or 0) + 1
 
             await self._session.flush()
 
             return leased_job
 
+        except SQLAlchemyError as exc:
+            raise RepositoryError("Database operation failed") from exc
+
+    async def find_expired_running_jobs(
+        self,
+        *,
+        cutoff: datetime,
+        limit: int = 100,
+    ) -> list[Job]:
+        """
+        Find RUNNING jobs with expired leases.
+        """
+        try:
+            stmt = (
+                select(JobOrm)
+                .where(
+                    JobOrm.state == JobState.RUNNING.value,
+                    JobOrm.lease_expires_at.is_not(None),
+                    JobOrm.lease_expires_at <= cutoff,
+                    JobOrm.archived.is_(False),
+                )
+                .order_by(JobOrm.lease_expires_at.asc())
+                .limit(limit)
+                .with_for_update(skip_locked=True)
+            )
+            result = await self._session.execute(stmt)
+            orms = result.scalars().all()
+            return [JobMapper.to_domain(orm) for orm in orms]
         except SQLAlchemyError as exc:
             raise RepositoryError("Database operation failed") from exc
 
