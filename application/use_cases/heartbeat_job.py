@@ -22,6 +22,7 @@ class HeartbeatJobUseCase:
     async def execute(
         self,
         job_id: UUID,
+        worker_id: str,
         visibility_timeout_s: int,
     ) -> Job:
         """
@@ -41,6 +42,8 @@ class HeartbeatJobUseCase:
 
             # Only heartbeat if job is RUNNING and we own it
             if job.state.value != "RUNNING":
+                return job
+            if job.locked_by != worker_id:
                 return job
 
             updated = job.extend_lease(visibility_timeout_s=visibility_timeout_s)

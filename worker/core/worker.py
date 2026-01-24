@@ -224,6 +224,7 @@ class Worker:
                 await self._heartbeat_uc.execute(
                     job_id=job_id,
                     worker_id=self.config.worker_id,
+                    visibility_timeout_s=self.config.heartbeat_interval_s,
                 )
         except asyncio.CancelledError:
             logger.debug("Heartbeat task for job %s was cancelled", job_id)
@@ -303,9 +304,12 @@ class Worker:
             f"Worker {self.config.worker_id} missing required capabilities. "
             f"Required: {required_capabilities}, Available: {self.config.capabilities}"
         )
+        now = datetime.utcnow()
         
         await self._fail_uc.execute(
             job_id=job.id,
+            started_at=now,
+            finished_at=now,
             worker_id=self.config.worker_id,
             error_type="CapabilityError",
             error_message=error_msg,
