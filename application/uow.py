@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from typing import Protocol
-
 from domain.ports.job_attempt_repository import JobAttemptRepository
 from domain.ports.job_repository import JobRepository
 from domain.ports.automation_rule_repository import AutomationRuleRepository
