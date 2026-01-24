@@ -1,16 +1,6 @@
-# # adapters/inbound/api/main.py
-# from fastapi import FastAPI
-# from adapters.inbound.api.error_handlers import register_error_handlers
-# from adapters.inbound.api.routers import jobs
+# adapters/inbound/api/main.py
 
-# app = FastAPI(title="task-flow")
-
-# register_error_handlers(app)
-
-# # All job-related endpoints are in jobs.router
-# app.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
-
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from adapters.inbound.api.error_handlers import register_error_handlers
@@ -41,6 +31,7 @@ def get_automation_rule_repository() -> AutomationRuleRepository:
     return SqlAlchemyUnitOfWork().automation_rules
 
 # Include routers
+# # All job-related endpoints are in jobs.router
 app.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
 app.include_router(automation_rules.router)
 app.include_router(events.router)
