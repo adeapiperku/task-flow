@@ -25,6 +25,15 @@ class JobRepository(Protocol):
         """
         ...
 
+    async def get_all(self) -> list[Job]:
+        """
+        Retrieve all jobs.
+
+        Returns:
+            A list of all jobs in the repository.
+        """
+        ...
+
     async def get_by_id(self, job_id: UUID) -> Job | None:
         """
         Retrieve a Job by its ID.

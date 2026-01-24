@@ -1,10 +1,14 @@
 # application/uow.py
 from __future__ import annotations
 
-from typing import Protocol
+from abc import ABC, abstractmethod
+from typing import Protocol, TypeVar, AsyncContextManager
+
 from domain.ports.job_attempt_repository import JobAttemptRepository
 from domain.ports.job_repository import JobRepository
 from domain.ports.automation_rule_repository import AutomationRuleRepository
+
+T = TypeVar('T', bound=AsyncContextManager)
 
 
 class UnitOfWork(Protocol):
@@ -13,10 +17,17 @@ class UnitOfWork(Protocol):
 
     The application layer depends on this interface, not on SQLAlchemy.
     """
-
     job_repo: JobRepository
     job_attempt_repo: JobAttemptRepository
     automation_rules: AutomationRuleRepository
+
+
+class UnitOfWorkFactory(Protocol):
+    """
+    Protocol for Unit of Work factory.
+    """
+    async def __call__(self) -> AsyncContextManager[UnitOfWork]:
+        ...
 
     async def __aenter__(self) -> "UnitOfWork":
         ...
