@@ -10,12 +10,20 @@ Production-ready worker implementation with:
 - Capability-based job routing
 - Lease management with heartbeats
 - Concurrency control and backpressure
+- Structured JSON logging
+- Contextual error handling
 """
 import asyncio
 import argparse
+import json
 import logging
-from typing import Set
+import sys
+import uuid
+from dataclasses import asdict
+from datetime import datetime
+from typing import Any, Dict, Optional, Set
 
+from pythonjsonlogger import jsonlogger
 from worker import Worker
 
 
@@ -83,44 +91,166 @@ def parse_args():
     return parser.parse_args()
 
 
-def setup_logging(level: str = "INFO") -> None:
-    """Configure logging."""
-    logging.basicConfig(
-        level=getattr(logging, level),
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+class ContextFilter(logging.Filter):
+    """Add contextual information to log records."""
+    
+    def __init__(self, context: Optional[Dict[str, Any]] = None):
+        super().__init__()
+        self.context = context or {}
+    
+    def filter(self, record):
+        for key, value in self.context.items():
+            setattr(record, key, value)
+        return True
+
+
+class JsonFormatter(jsonlogger.JsonFormatter):
+    """Custom JSON formatter that includes additional context."""
+    
+    def add_fields(self, log_record, record, message_dict):
+        super().add_fields(log_record, record, message_dict)
+        if not log_record.get('timestamp'):
+            log_record['timestamp'] = datetime.utcnow().isoformat()
+        if log_record.get('level'):
+            log_record['level'] = log_record['level'].upper()
+        else:
+            log_record['level'] = record.levelname
+
+
+def setup_logging(level: str = "INFO", context: Optional[Dict[str, Any]] = None) -> logging.Logger:
+    """
+    Configure structured JSON logging with context.
+    
+    Args:
+        level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        context: Additional context to include in all log messages
+        
+    Returns:
+        Configured logger instance
+    """
+    logger = logging.getLogger()
+    logger.setLevel(level)
+    
+    # Remove existing handlers
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+    
+    # Create console handler with JSON formatter
+    handler = logging.StreamHandler(sys.stdout)
+    formatter = JsonFormatter(
+        '%(timestamp)s %(level)s %(name)s %(message)s',
+        timestamp=True
     )
+    handler.setFormatter(formatter)
+    
+    # Add context filter
+    context_filter = ContextFilter(context)
+    handler.addFilter(context_filter)
+    
+    logger.addHandler(handler)
+    
+    # Configure third-party loggers
+    logging.getLogger('asyncio').setLevel('WARNING')
+    logging.getLogger('urllib3').setLevel('WARNING')
+    
+    return logger
 
 
 async def main() -> None:
-    """Main entry point for the worker."""
+    """
+    Main entry point for the worker.
+    
+    Handles worker initialization, execution, and graceful shutdown.
+    """
     args = parse_args()
-    setup_logging(args.log_level)
+    
+    # Generate worker ID if not provided
+    worker_id = args.worker_id or f"worker-{str(uuid.uuid4())[:8]}"
+    
+    # Set up logging with context
+    logger = setup_logging(
+        level=args.log_level,
+        context={
+            'worker_id': worker_id,
+            'queue': args.queue,
+            'service': 'task-flow-worker',
+        }
+    )
+    
+    # Log startup information
+    logger.info(
+        "Starting worker",
+        extra={
+            'capabilities': args.capabilities,
+            'concurrency': args.concurrency,
+            'poll_interval': args.poll_interval,
+            'heartbeat_interval': args.heartbeat_interval,
+        }
+    )
     
     # Convert capabilities to a set
     capabilities: Set[str] = set(args.capabilities) if args.capabilities else set()
     
-    # Create and run worker
-    worker = Worker(
-        queue=args.queue,
-        worker_id=args.worker_id,
-        poll_interval=args.poll_interval,
-        prefer_db=args.prefer_db,
-        capabilities=capabilities,
-        concurrency=args.concurrency,
-        heartbeat_interval_s=args.heartbeat_interval,
+    try:
+        # Create and run worker
+        worker = Worker(
+            queue=args.queue,
+            worker_id=worker_id,
+            poll_interval=args.poll_interval,
+            prefer_db=args.prefer_db,
+            capabilities=capabilities,
+            concurrency=args.concurrency,
+            heartbeat_interval_s=args.heartbeat_interval,
+        )
+        
+        logger.info("Worker initialized and starting")
+        await worker.run()
+        
+    except asyncio.CancelledError:
+        logger.info("Worker received cancellation signal, shutting down")
+    except KeyboardInterrupt:
+        logger.info("Worker stopped by user")
+    except Exception as exc:
+        logger.error(
+            "Worker failed with unexpected error",
+            exc_info=True,
+            extra={
+                'error_type': exc.__class__.__name__,
+                'error_details': str(exc),
+            }
+        )
+        # Exit with non-zero status code to indicate error
+        sys.exit(1)
+    finally:
+        # Ensure all logs are flushed
+        logging.shutdown()
+
+
+def handle_exception(exc_type, exc_value, exc_traceback):
+    """Handle uncaught exceptions and log them before exiting."""
+    if issubclass(exc_type, KeyboardInterrupt):
+        # Call the default excepthook for keyboard interrupts
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+    
+    # Log the uncaught exception
+    logger = logging.getLogger(__name__)
+    logger.critical(
+        "Uncaught exception",
+        exc_info=(exc_type, exc_value, exc_traceback)
     )
     
-    try:
-        await worker.run()
-    except KeyboardInterrupt:
-        logging.info("Worker stopped by user")
-    except Exception as exc:
-        logging.exception("Worker failed: %s", exc)
-        raise
+    # Exit with error code
+    sys.exit(1)
 
 
 if __name__ == "__main__":
+    # Set up global exception handler
+    sys.excepthook = handle_exception
+    
+    # Run the main async function
     try:
         asyncio.run(main())
-    except KeyboardInterrupt:
-        pass
+    except Exception as exc:
+        # This should be caught by the global excepthook
+        sys.exit(1)
