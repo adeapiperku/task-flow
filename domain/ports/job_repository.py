@@ -73,3 +73,18 @@ class JobRepository(Protocol):
         - None if no job is available
         """
         ...
+
+    async def find_expired_running_jobs(
+        self,
+        *,
+        cutoff: datetime,
+        limit: int = 100,
+    ) -> list[Job]:
+        """
+        Find RUNNING jobs with expired leases before the cutoff.
+
+        Args:
+            cutoff: Jobs with lease_expires_at <= cutoff are considered expired
+            limit: Max number of jobs to return
+        """
+        ...
