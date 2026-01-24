@@ -56,7 +56,7 @@ class AutomationEngine:
                 # Generate and save jobs for this rule
                 jobs = rule.generate_jobs()
                 for job in jobs:
-                    await self.job_repository.add(job)
+                    await self.job_repository.insert(job)
                 
                 created_jobs.extend(jobs)
                 
@@ -78,6 +78,8 @@ class AutomationEngine:
         tenant_id: Optional[str] = None,
     ) -> List[AutomationRule]:
         """Get all rules that should be evaluated for the given event type."""
+        if tenant_id is None:
+            return []
         # Determine the trigger type based on event_type
         if event_type.startswith('cron.'):
             trigger_type = TriggerType.CRON

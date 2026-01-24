@@ -158,38 +158,20 @@ class AutomationRule:
         Generate Job instances based on the rule's actions.
         This should be called after conditions are evaluated and passed.
         """
-        from domain.models.job import Job, JobState
-        from domain.models.retry_policy import RetryPolicy
+        from domain.models.job import Job
 
         now = datetime.utcnow()
         jobs = []
 
         for action in self.actions:
-            job = Job(
-                id=uuid4(),
-                queue=action.queue,
+            job = Job.new(
                 name=action.name,
                 payload=action.payload,
+                queue=action.queue,
                 tenant_id=action.tenant_id or self.tenant_id,
-                state=JobState.PENDING,
                 priority=action.priority,
-                created_at=now,
-                updated_at=now,
-                scheduled_at=now,
-                next_run_at=now,
-                last_run_at=None,
-                attempts=0,
                 max_attempts=action.max_attempts,
-                archived=False,
-                locked_by=None,
-                locked_at=None,
-                retry_policy=RetryPolicy(
-                    max_retries=action.max_attempts - 1,
-                    initial_delay_seconds=30,
-                    max_delay_seconds=3600,
-                    backoff_factor=2,
-                    jitter=True
-                )
+                scheduled_at=now,
             )
             jobs.append(job)
 
