@@ -170,6 +170,35 @@ class JobRepositorySqlAlchemy(JobRepository):
             orm: JobOrm | None = result.scalar_one_or_none()
             if orm is None:
                 logger.debug("repo.acquire_next_due_job: no runnable job found")
+                tenant_limit_stmt = (
+                    select(
+                        JobOrm.tenant_id,
+                        func.count().label("running_count"),
+                        TenantOrm.max_running_jobs,
+                    )
+                    .join(
+                        TenantOrm,
+                        cast(TenantOrm.id, String) == JobOrm.tenant_id,
+                    )
+                    .where(
+                        JobOrm.queue == queue,
+                        JobOrm.state == JobState.RUNNING.value,
+                        JobOrm.archived.is_(False),
+                        TenantOrm.active.is_(True),
+                    )
+                    .group_by(JobOrm.tenant_id, TenantOrm.max_running_jobs)
+                    .having(func.count() >= TenantOrm.max_running_jobs)
+                    .limit(1)
+                )
+                tenant_limit_row = (await self._session.execute(tenant_limit_stmt)).first()
+                if tenant_limit_row:
+                    tenant_id, running_count_val, max_running_jobs = tenant_limit_row
+                    logger.info(
+                        "repo.acquire_next_due_job: tenant concurrency limit reached tenant_id=%s running=%s limit=%s",
+                        tenant_id,
+                        running_count_val,
+                        max_running_jobs,
+                    )
                 if logger.isEnabledFor(logging.DEBUG):
                     base_filters = [
                         JobOrm.queue == queue,
