@@ -39,22 +39,20 @@ class ReclaimExpiredJobsUseCase:
         cutoff = now - timedelta(seconds=grace_period_s)
         
         async with self._uow_factory() as uow:
-            # Find expired RUNNING jobs
-            # This would need a new repository method, but for now we'll
-            # use a simplified approach - in production, add:
-            # async def find_expired_running_jobs(self, *, cutoff: datetime) -> list[Job]
-            
-            # For now, return empty list - implement repository method later
-            # This is the pattern to follow:
-            # expired_jobs = await uow.job_repo.find_expired_running_jobs(cutoff=cutoff)
-            # for job in expired_jobs[:max_reclaim]:
-            #     requeued = job._replace(
-            #         state=JobState.SCHEDULED,
-            #         locked_by=None,
-            #         locked_at=None,
-            #         lease_expires_at=None,
-            #     )
-            #     await uow.job_repo.update(requeued)
-            
-            return []
+            expired_jobs = await uow.job_repo.find_expired_running_jobs(
+                cutoff=cutoff,
+                limit=max_reclaim,
+            )
+            reclaimed: list[Job] = []
+            for job in expired_jobs:
+                requeued = job._replace(
+                    state=JobState.SCHEDULED,
+                    locked_by=None,
+                    locked_at=None,
+                    lease_expires_at=None,
+                )
+                stored = await uow.job_repo.update(requeued)
+                reclaimed.append(stored)
+
+            return reclaimed
 

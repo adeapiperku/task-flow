@@ -5,6 +5,7 @@ from typing import Protocol
 
 from domain.ports.job_attempt_repository import JobAttemptRepository
 from domain.ports.job_repository import JobRepository
+from domain.ports.automation_rule_repository import AutomationRuleRepository
 
 
 class UnitOfWork(Protocol):
@@ -16,6 +17,7 @@ class UnitOfWork(Protocol):
 
     job_repo: JobRepository
     job_attempt_repo: JobAttemptRepository
+    automation_rules: AutomationRuleRepository
 
     async def __aenter__(self) -> "UnitOfWork":
         ...
