@@ -727,6 +727,43 @@ done
 
 ---
 
+## Automated Unit Tests (Quick Start)
+
+We include minimal async unit tests using in-memory fakes that exercise:
+- success and failure paths
+- retry behavior
+- acquisition with queue/tenant limits
+- automation rule job creation
+
+Run:
+
+```bash
+pip install pytest pytest-asyncio
+pytest -q
+```
+
+---
+
+## Integration Tests (Database-backed)
+
+We include optional integration tests that execute against a real Postgres DB.
+They mirror the SQL steps used in manual demos:
+
+- queue + tenant setup
+- scheduling + acquisition + completion
+- queue and tenant concurrency limits
+- automation rule triggers
+
+Run:
+
+```bash
+# PowerShell
+$env:TASKFLOW_DATABASE_URL="postgresql+asyncpg://postgres:root@localhost:5432/taskflow"
+python -m pytest -q tests/integration/test_db_workflows.py
+```
+
+---
+
 ## Troubleshooting
 
 ### Migration Errors

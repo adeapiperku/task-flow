@@ -230,7 +230,7 @@ class SqlAlchemyAutomationRuleRepository(AutomationRuleRepository):
         
         # Create domain model
         return AutomationRule(
-            id=UUID(rule_orm.id),
+            id=UUID(str(rule_orm.id)),
             name=rule_orm.name,
             description=rule_orm.description,
             tenant_id=rule_orm.tenant_id,
