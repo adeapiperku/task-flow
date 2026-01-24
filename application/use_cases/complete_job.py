@@ -35,7 +35,7 @@ class CompleteJobUseCase:
             # Attempt number = previous failures + this attempt
             attempt_number = job.attempts + 1
 
-            updated = job.mark_succeeded()
+            updated = job.mark_succeeded(now=finished_at)
             stored_job = await uow.job_repo.update(updated)
 
             attempt = JobAttempt.new(
