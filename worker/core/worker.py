@@ -130,10 +130,13 @@ class Worker:
     
     async def _acquire_next_job(self) -> Optional[Job]:
         """Acquire the next job from the queue."""
-        return await self._acquire_uc.execute(
+        job = await self._acquire_uc.execute(
             queue=self.config.queue,
             worker_id=self.config.worker_id,
         )
+        if job:
+            logger.debug("Worker %s acquired job %s", self.config.worker_id, job.id)
+        return job
     
     async def _check_job_capabilities(self, job: Job) -> bool:
         """Check if worker has required capabilities for the job."""
@@ -201,8 +204,18 @@ class Worker:
 
                 # Handle job completion
                 if result.success:
+                    logger.info(
+                        "Worker %s job %s succeeded",
+                        self.config.worker_id,
+                        job.id,
+                    )
                     await self._handle_job_success(job, started_at)
                 else:
+                    logger.info(
+                        "Worker %s job %s failed",
+                        self.config.worker_id,
+                        job.id,
+                    )
                     await self._handle_job_failure(job, started_at, result.error)
 
             except Exception as exc:

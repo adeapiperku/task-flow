@@ -61,6 +61,12 @@ async def dispatch_job(
             raise JobDefinitionNotFoundError(
                 f"Job definition '{job.name}' not found in registry"
             )
+        logger.debug(
+            "dispatch_job: resolved definition name=%s execution_mode=%s handler_ref=%s",
+            definition.name,
+            definition.execution_mode,
+            definition.handler_ref,
+        )
 
         # Store execution parameters
         timeout_s = definition.timeout_s

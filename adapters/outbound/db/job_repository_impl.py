@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select, func, and_, or_, cast, String
+from sqlalchemy import select, func, and_, or_, cast, String, exists
 from sqlalchemy.orm import aliased
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -13,6 +13,10 @@ from adapters.outbound.db.models import JobOrm, QueueOrm, TenantOrm
 from domain.models.job import Job, JobState
 from domain.ports.job_repository import JobRepository
 from domain.exceptions import JobAlreadyExistsError, RepositoryError
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 class JobRepositorySqlAlchemy(JobRepository):
     """
@@ -82,6 +86,12 @@ class JobRepositorySqlAlchemy(JobRepository):
         from datetime import timedelta
         
         try:
+            logger.debug(
+                "repo.acquire_next_due_job: queue=%s worker_id=%s now=%s",
+                queue,
+                worker_id,
+                now,
+            )
             # Enforce queue-level concurrency limits when configured
             queue_stmt = select(QueueOrm.max_concurrency, QueueOrm.active).where(
                 QueueOrm.name == queue
@@ -90,7 +100,11 @@ class JobRepositorySqlAlchemy(JobRepository):
             queue_row = queue_result.first()
             if queue_row:
                 max_concurrency, active = queue_row
-                if not active:
+                if active is False:
+                    logger.info(
+                        "repo.acquire_next_due_job: queue inactive queue=%s",
+                        queue,
+                    )
                     return None
                 running_in_queue = await self._session.execute(
                     select(func.count())
@@ -102,6 +116,10 @@ class JobRepositorySqlAlchemy(JobRepository):
                     )
                 )
                 if running_in_queue.scalar_one() >= max_concurrency:
+                    logger.info(
+                        "repo.acquire_next_due_job: queue concurrency limit reached queue=%s",
+                        queue,
+                    )
                     return None
 
             running_jobs = aliased(JobOrm)
@@ -111,6 +129,7 @@ class JobRepositorySqlAlchemy(JobRepository):
                 .where(
                     running_jobs.state == JobState.RUNNING.value,
                     running_jobs.tenant_id == JobOrm.tenant_id,
+                    running_jobs.archived.is_(False),
                 )
                 .correlate(JobOrm)
                 .scalar_subquery()
@@ -118,19 +137,24 @@ class JobRepositorySqlAlchemy(JobRepository):
 
             stmt = (
                 select(JobOrm)
-                .outerjoin(TenantOrm, cast(TenantOrm.id, String) == JobOrm.tenant_id)
                 .where(
                     JobOrm.queue == queue,
                     JobOrm.archived.is_(False),
                     JobOrm.state.in_(
                         [JobState.PENDING.value, JobState.SCHEDULED.value]
                     ),
-                    (JobOrm.next_run_at.is_(None) | (JobOrm.next_run_at <= now)),
+                    (
+                        JobOrm.next_run_at.is_(None)
+                        | (JobOrm.next_run_at <= func.now())
+                    ),
                     or_(
                         JobOrm.tenant_id.is_(None),
-                        and_(
-                            TenantOrm.active.is_(True),
-                            running_count < TenantOrm.max_running_jobs,
+                        exists(
+                            select(1).where(
+                                cast(TenantOrm.id, String) == JobOrm.tenant_id,
+                                TenantOrm.active.is_(True),
+                                running_count < TenantOrm.max_running_jobs,
+                            )
                         ),
                     ),
                 )
@@ -145,6 +169,55 @@ class JobRepositorySqlAlchemy(JobRepository):
             result = await self._session.execute(stmt)
             orm: JobOrm | None = result.scalar_one_or_none()
             if orm is None:
+                logger.debug("repo.acquire_next_due_job: no runnable job found")
+                if logger.isEnabledFor(logging.DEBUG):
+                    base_filters = [
+                        JobOrm.queue == queue,
+                        JobOrm.archived.is_(False),
+                    ]
+                    state_filters = base_filters + [
+                        JobOrm.state.in_(
+                            [JobState.PENDING.value, JobState.SCHEDULED.value]
+                        )
+                    ]
+                    time_filters = state_filters + [
+                        (
+                            JobOrm.next_run_at.is_(None)
+                            | (JobOrm.next_run_at <= func.now())
+                        )
+                    ]
+                    tenant_filters = time_filters + [
+                        or_(
+                            JobOrm.tenant_id.is_(None),
+                            exists(
+                                select(1).where(
+                                    cast(TenantOrm.id, String) == JobOrm.tenant_id,
+                                    TenantOrm.active.is_(True),
+                                    running_count < TenantOrm.max_running_jobs,
+                                )
+                            ),
+                        )
+                    ]
+
+                    total_count = await self._session.execute(
+                        select(func.count()).select_from(JobOrm).where(*base_filters)
+                    )
+                    state_count = await self._session.execute(
+                        select(func.count()).select_from(JobOrm).where(*state_filters)
+                    )
+                    time_count = await self._session.execute(
+                        select(func.count()).select_from(JobOrm).where(*time_filters)
+                    )
+                    tenant_count = await self._session.execute(
+                        select(func.count()).select_from(JobOrm).where(*tenant_filters)
+                    )
+                    logger.debug(
+                        "repo.acquire_next_due_job: counts total=%s state=%s time=%s tenant=%s",
+                        total_count.scalar_one(),
+                        state_count.scalar_one(),
+                        time_count.scalar_one(),
+                        tenant_count.scalar_one(),
+                    )
                 return None
 
             # Use domain method to acquire lease
@@ -160,6 +233,12 @@ class JobRepositorySqlAlchemy(JobRepository):
 
             await self._session.flush()
 
+            logger.info(
+                "repo.acquire_next_due_job: leased job_id=%s name=%s lease_expires_at=%s",
+                leased_job.id,
+                leased_job.name,
+                leased_job.lease_expires_at,
+            )
             return leased_job
 
         except SQLAlchemyError as exc:

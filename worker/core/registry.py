@@ -13,20 +13,16 @@ class RegistryManager:
         self.uow_factory = uow_factory
         self.prefer_db = prefer_db
     
-    async def get_hybrid_registry(self):
-        """Create a new hybrid registry instance."""
+    async def get_job_definition(self, job_name: str):
+        """Get job definition from registry."""
         from adapters.outbound.registry.job_registry_db import DbJobRegistry
         from adapters.outbound.registry.job_registry_hybrid import HybridJobRegistry
-        
+
         async with self.uow_factory() as uow:
             db_registry = DbJobRegistry(uow._session)
-            return HybridJobRegistry(
+            registry = HybridJobRegistry(
                 plugin_registry=self.plugin_registry,
                 db_registry=db_registry,
                 prefer_db=self.prefer_db,
             )
-    
-    async def get_job_definition(self, job_name: str):
-        """Get job definition from registry."""
-        registry = await self.get_hybrid_registry()
-        return await registry.get_definition(job_name)
+            return await registry.get_definition(job_name)

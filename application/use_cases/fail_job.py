@@ -9,6 +9,9 @@ from application.uow import UnitOfWork
 from domain.exceptions import NotFoundError
 from domain.models.job import Job
 from domain.models.job_attempt import JobAttempt
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class FailJobUseCase:
@@ -38,6 +41,13 @@ class FailJobUseCase:
 
             updated = job.apply_failure(now=finished_at)
             stored_job = await uow.job_repo.update(updated)
+            logger.info(
+                "fail_job: job_id=%s state=%s attempts=%s error_type=%s",
+                stored_job.id,
+                stored_job.state.value,
+                stored_job.attempts,
+                error_type,
+            )
 
             attempt = JobAttempt.new(
                 job_id=job_id,
