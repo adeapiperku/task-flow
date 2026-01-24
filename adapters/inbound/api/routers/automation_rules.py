@@ -71,26 +71,20 @@ class AutomationRuleResponse(AutomationRuleBase):
 
 # Dependencies
 from fastapi import Depends
-from sqlalchemy.ext.asyncio import AsyncSession
 
-async def get_uow() -> SqlAlchemyUnitOfWork:
+@asynccontextmanager
+async def get_uow():
     uow = SqlAlchemyUnitOfWork()
-    await uow.__aenter__()
-    return uow
+    try:
+        await uow.__aenter__()
+        yield uow
+    finally:
+        await uow.__aexit__(None, None, None)
 
 async def get_automation_rule_repository(
     uow: SqlAlchemyUnitOfWork = Depends(get_uow)
 ) -> AutomationRuleRepository:
     return uow.automation_rules
-
-# @asynccontextmanager
-# async def get_automation_rule_repository():
-#     uow = SqlAlchemyUnitOfWork()
-#     try:
-#         async with uow:
-#             yield uow.automation_rules
-#     finally:
-#         await uow.__aexit__(None, None, None)
 
 # API Endpoints
 # @router.post("", response_model=AutomationRuleResponse, status_code=201)
