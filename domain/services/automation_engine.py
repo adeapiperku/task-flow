@@ -10,6 +10,25 @@ from domain.ports.job_repository import JobRepository
 
 logger = logging.getLogger(__name__)
 
+
+def _matches_event(rule: AutomationRule, event_type: str) -> bool:
+    """Check if a rule's trigger matches the given event."""
+    if rule.trigger.type == TriggerType.CRON:
+        # For cron, check if the event_type matches the cron pattern
+        # This is a simplified example - in practice, you'd use a cron parser
+        return rule.trigger.config.get('schedule') == event_type
+
+    elif rule.trigger.type == TriggerType.WEBHOOK:
+        # For webhooks, check if the event_type matches the webhook path
+        return rule.trigger.config.get('path') in event_type
+
+    elif rule.trigger.type == TriggerType.INTERNAL_EVENT:
+        # For internal events, check if the event_type matches
+        return rule.trigger.config.get('event_type') == event_type
+
+    return False
+
+
 class AutomationEngine:
     """
     Core service for evaluating automation rules and triggering actions.
@@ -99,24 +118,7 @@ class AutomationEngine:
         # (e.g., specific cron pattern or webhook path)
         relevant_rules = []
         for rule in rules:
-            if self._matches_event(rule, event_type):
+            if _matches_event(rule, event_type):
                 relevant_rules.append(rule)
         
         return relevant_rules
-    
-    def _matches_event(self, rule: AutomationRule, event_type: str) -> bool:
-        """Check if a rule's trigger matches the given event."""
-        if rule.trigger.type == TriggerType.CRON:
-            # For cron, check if the event_type matches the cron pattern
-            # This is a simplified example - in practice, you'd use a cron parser
-            return rule.trigger.config.get('schedule') == event_type
-        
-        elif rule.trigger.type == TriggerType.WEBHOOK:
-            # For webhooks, check if the event_type matches the webhook path
-            return rule.trigger.config.get('path') in event_type
-        
-        elif rule.trigger.type == TriggerType.INTERNAL_EVENT:
-            # For internal events, check if the event_type matches
-            return rule.trigger.config.get('event_type') == event_type
-        
-        return False
