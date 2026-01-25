@@ -1,0 +1,45 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: root
+      POSTGRES_DB: taskflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - taskflow_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d taskflow"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    environment:
+      TASKFLOW_DATABASE_URL: postgresql+asyncpg://postgres:root@db:5432/taskflow
+      TASKFLOW_ENVIRONMENT: local
+      TASKFLOW_BROKER_URL: redis://localhost:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    command: ["uvicorn", "adapters.inbound.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+  worker:
+    build: .
+    environment:
+      TASKFLOW_DATABASE_URL: postgresql+asyncpg://postgres:root@db:5432/taskflow
+      TASKFLOW_ENVIRONMENT: local
+      TASKFLOW_BROKER_URL: redis://localhost:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["python", "-m", "worker.runner", "--queue", "default", "--concurrency", "2", "--log-level", "INFO"]
+
+volumes:
+  taskflow_db:
