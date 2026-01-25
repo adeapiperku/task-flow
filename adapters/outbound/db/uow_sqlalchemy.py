@@ -11,6 +11,8 @@ from application.uow import UnitOfWork
 from domain.ports.job_repository import JobRepository
 from domain.ports.job_attempt_repository import JobAttemptRepository
 from domain.ports.automation_rule_repository import AutomationRuleRepository
+from domain.ports.tenant_repository import TenantRepository as TenantRepositoryPort
+from adapters.outbound.db.tenant_repository_impl import TenantRepository as TenantRepositoryImpl
 
 
 class SqlAlchemyUnitOfWork(UnitOfWork):
@@ -28,12 +30,15 @@ class SqlAlchemyUnitOfWork(UnitOfWork):
         self.job_repo: JobRepository | None = None
         self.job_attempt_repo: JobAttemptRepository | None = None
         self.automation_rules: AutomationRuleRepository | None = None
+        self._tenant_repo: TenantRepositoryPort | None = None
 
     async def __aenter__(self) -> "SqlAlchemyUnitOfWork":
         self._session = AsyncSessionLocal()
         self.job_repo = JobRepositorySqlAlchemy(self._session)
         self.job_attempt_repo = JobAttemptRepositorySqlAlchemy(self._session)
         self.automation_rules = SqlAlchemyAutomationRuleRepository(self._session)
+        self._tenant_repo = TenantRepositoryImpl(self._session)
+
         return self
 
     async def __aexit__(self, exc_type, exc, tb) -> None:
@@ -42,6 +47,12 @@ class SqlAlchemyUnitOfWork(UnitOfWork):
         else:
             await self.commit()
         await self._session.close()
+
+    @property
+    def tenant_repo(self) -> TenantRepository:
+        if self._tenant_repo is None:
+            raise ValueError("Tenant repository not initialized")
+        return self._tenant_repo
 
     async def commit(self) -> None:
         if self._session:

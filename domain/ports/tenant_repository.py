@@ -1,7 +1,6 @@
-from typing import Protocol
+from typing import Protocol, List
 from domain.models.tenant import Tenant
-
-
 class TenantRepository(Protocol):
     async def get_by_id(self, tenant_id: str) -> Tenant | None: ...
     async def save(self, tenant: Tenant) -> None: ...
+    async def get_all(self) -> List[Tenant]: ...
