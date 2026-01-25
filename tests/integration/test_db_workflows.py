@@ -9,8 +9,11 @@ from sqlalchemy import text
 from application.dto.schedule_job_command import ScheduleJobCommand
 from application.use_cases.acquire_next_job import AcquireNextJobUseCase
 from application.use_cases.complete_job import CompleteJobUseCase
+from application.use_cases.fail_job import FailJobUseCase
 from application.use_cases.handle_event import HandleEventUseCase
+from application.use_cases.reclaim_expired_jobs import ReclaimExpiredJobsUseCase
 from application.use_cases.schedule_job import ScheduleJobUseCase
+from domain.models.job import JobState
 from domain.models.automation_rule import Action, AutomationRule, Condition, Trigger, TriggerType
 from tests.fakes import FakeEventBus
 
@@ -114,7 +117,32 @@ async def test_db_schedule_acquire_complete():
                 {"id": str(job.id)},
             )
         ).scalar_one()
-        assert attempts == 1
+    assert attempts == 1
+
+
+@pytest.mark.asyncio
+async def test_db_acquire_logs_lease(caplog):
+    _require_db()
+    await _reset_db()
+    await _seed_queue_and_tenant()
+
+    from adapters.outbound.db.uow_sqlalchemy import SqlAlchemyUnitOfWork
+
+    schedule = ScheduleJobUseCase(uow_factory=SqlAlchemyUnitOfWork)
+    cmd = ScheduleJobCommand(
+        name="send-email",
+        payload={"email": "demo@example.com", "subject": "Hello"},
+        queue="default",
+        tenant_id="11111111-1111-1111-1111-111111111111",
+        scheduled_at=datetime.utcnow(),
+    )
+    await schedule.execute(cmd)
+
+    acquire = AcquireNextJobUseCase(uow_factory=SqlAlchemyUnitOfWork)
+    with caplog.at_level("INFO"):
+        leased = await acquire.execute(queue="default", worker_id="worker-test")
+    assert leased is not None
+    assert "leased job_id" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -191,6 +219,79 @@ async def test_db_tenant_concurrency_limit():
 
 
 @pytest.mark.asyncio
+async def test_db_fail_and_retry_dead():
+    _require_db()
+    await _reset_db()
+    await _seed_queue_and_tenant()
+
+    from adapters.outbound.db.uow_sqlalchemy import SqlAlchemyUnitOfWork
+
+    schedule = ScheduleJobUseCase(uow_factory=SqlAlchemyUnitOfWork)
+    cmd = ScheduleJobCommand(
+        name="send-email",
+        payload={"email": "demo@example.com"},
+        queue="default",
+        tenant_id="11111111-1111-1111-1111-111111111111",
+        max_attempts=2,
+        scheduled_at=datetime.utcnow(),
+    )
+    job = await schedule.execute(cmd)
+
+    fail = FailJobUseCase(uow_factory=SqlAlchemyUnitOfWork)
+    now = datetime.utcnow()
+    first = await fail.execute(
+        job.id,
+        started_at=now,
+        finished_at=now,
+        worker_id="worker-test",
+        error_type="ValueError",
+        error_message="boom",
+    )
+    assert first.state == JobState.SCHEDULED
+
+    second = await fail.execute(
+        job.id,
+        started_at=now,
+        finished_at=now,
+        worker_id="worker-test",
+        error_type="ValueError",
+        error_message="boom",
+    )
+    assert second.state == JobState.DEAD
+
+
+@pytest.mark.asyncio
+async def test_db_reclaim_expired_jobs():
+    _require_db()
+    await _reset_db()
+    await _seed_queue_and_tenant()
+
+    from adapters.outbound.db.base import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            text(
+                "INSERT INTO jobs (id, queue, name, tenant_id, payload, state, priority, "
+                "created_at, updated_at, scheduled_at, next_run_at, attempts, max_attempts, "
+                "archived, locked_by, locked_at, lease_expires_at, retry_strategy, retry_base_delay_seconds) "
+                "VALUES (gen_random_uuid(), 'default', 'send-email', "
+                "'11111111-1111-1111-1111-111111111111', "
+                "'{\"email\":\"demo@example.com\"}', 'RUNNING', 0, "
+                "now(), now(), now(), now(), 0, 3, false, "
+                "'worker-test', now(), now() - interval '5 minutes', "
+                "'EXPONENTIAL', 30)"
+            )
+        )
+        await session.commit()
+
+    from adapters.outbound.db.uow_sqlalchemy import SqlAlchemyUnitOfWork
+    reclaim = ReclaimExpiredJobsUseCase(uow_factory=SqlAlchemyUnitOfWork)
+    reclaimed = await reclaim.execute(grace_period_s=0, max_reclaim=10)
+    assert reclaimed
+    assert reclaimed[0].state == JobState.SCHEDULED
+
+
+@pytest.mark.asyncio
 async def test_db_automation_rule_creates_job():
     _require_db()
     await _reset_db()
@@ -231,3 +332,46 @@ async def test_db_automation_rule_creates_job():
     )
     assert len(jobs) == 1
     assert jobs[0].name == "send-email"
+
+
+@pytest.mark.asyncio
+async def test_db_automation_rule_no_match():
+    _require_db()
+    await _reset_db()
+    await _seed_queue_and_tenant()
+
+    from adapters.outbound.db.uow_sqlalchemy import SqlAlchemyUnitOfWork
+
+    trigger = Trigger(type=TriggerType.WEBHOOK, config={"path": "webhook.demo"})
+    conditions = [Condition(field="plan", operator="eq", value="pro")]
+    actions = [
+        Action(
+            name="send-email",
+            queue="default",
+            payload={"email": "demo@example.com"},
+        )
+    ]
+    rule = AutomationRule.create(
+        name="demo-rule",
+        description="Trigger job on webhook",
+        tenant_id="11111111-1111-1111-1111-111111111111",
+        trigger=trigger,
+        actions=actions,
+        created_by="system",
+        conditions=conditions,
+    )
+
+    async with SqlAlchemyUnitOfWork() as uow:
+        await uow.automation_rules.add(rule)
+
+    use_case = HandleEventUseCase(
+        uow_factory=SqlAlchemyUnitOfWork,
+        event_bus=FakeEventBus(),
+    )
+    jobs = await use_case.execute(
+        event_type="webhook.demo",
+        context={"plan": "free"},
+        tenant_id="11111111-1111-1111-1111-111111111111",
+    )
+
+    assert jobs == []
