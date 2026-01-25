@@ -161,3 +161,43 @@ async def test_automation_rule_creates_jobs():
     assert len(jobs) == 1
     assert jobs[0].name == "send-email"
     assert jobs[0].tenant_id == "t1"
+
+
+@pytest.mark.asyncio
+async def test_automation_rule_no_match():
+    job_repo = FakeJobRepository()
+    attempts_repo = FakeJobAttemptRepository()
+    rules_repo = FakeAutomationRuleRepository()
+
+    trigger = Trigger(type=TriggerType.WEBHOOK, config={"path": "webhook.demo"})
+    conditions = [Condition(field="plan", operator="eq", value="pro")]
+    actions = [
+        Action(
+            name="send-email",
+            queue="default",
+            payload={"email": "pro@example.com"},
+        )
+    ]
+    rule = AutomationRule.create(
+        name="demo-rule",
+        description="Trigger job on webhook",
+        tenant_id="t1",
+        trigger=trigger,
+        actions=actions,
+        created_by="system",
+        conditions=conditions,
+    )
+    await rules_repo.add(rule)
+
+    uow_factory = lambda: FakeUnitOfWork(job_repo, attempts_repo, rules_repo)
+    event_bus = FakeEventBus()
+    use_case = HandleEventUseCase(uow_factory=uow_factory, event_bus=event_bus)
+
+    jobs = await use_case.execute(
+        event_type="webhook.demo",
+        context={"plan": "free"},
+        tenant_id="t1",
+    )
+
+    assert jobs == []
+    assert event_bus.created == []
