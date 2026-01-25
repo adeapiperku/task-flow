@@ -15,6 +15,12 @@ from .utils import create_task_with_callback, setup_signal_handlers
 logger = logging.getLogger(__name__)
 
 
+def _generate_worker_id() -> str:
+    """Generate a unique worker ID."""
+    from uuid import uuid4
+    return str(uuid4())
+
+
 class Worker:
     """Production-ready worker with job processing and management."""
 
@@ -33,7 +39,7 @@ class Worker:
         """Initialize worker with configuration."""
         self.config = worker_models.WorkerConfig(
             queue=queue,
-            worker_id=worker_id or f"worker-{self._generate_worker_id()}",
+            worker_id=worker_id or f"worker-{_generate_worker_id()}",
             poll_interval=poll_interval,
             prefer_db=prefer_db,
             capabilities=capabilities or set(),
@@ -60,12 +66,7 @@ class Worker:
             semaphore=self._semaphore,
             shutdown_event=self._shutdown_event,
         )
-    
-    def _generate_worker_id(self) -> str:
-        """Generate a unique worker ID."""
-        from uuid import uuid4
-        return str(uuid4())
-    
+
     async def run(self) -> None:
         """Run the worker main loop."""
         logger.info(
