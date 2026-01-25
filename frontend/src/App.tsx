@@ -1,11 +1,9 @@
-// src/App.tsx
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { MantineProvider } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 import { MonitoringPage } from './pages/MonitoringPage';
-import { AnalyticsPage } from './pages/AnalyticsPage';
 import { Navigation } from './components/Navigation';
 
 const queryClient = new QueryClient({
@@ -26,12 +24,13 @@ export default function App() {
         <Router>
           <div className="min-h-screen bg-gray-50">
             <Navigation />
-            <main className="py-6">
+
+            <main className="flex justify-center py-4">
               <Routes>
                 <Route path="/" element={<MonitoringPage />} />
-                <Route path="/analytics" element={<AnalyticsPage />} />
               </Routes>
             </main>
+
           </div>
         </Router>
       </MantineProvider>
