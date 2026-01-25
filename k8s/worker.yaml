@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: taskflow-worker
+  namespace: taskflow
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: taskflow-worker
+  template:
+    metadata:
+      labels:
+        app: taskflow-worker
+    spec:
+      containers:
+        - name: worker
+          image: taskflow:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: taskflow-config
+            - secretRef:
+                name: taskflow-secrets
+          command: ["python"]
+          args: ["-m", "worker.runner", "--queue", "default", "--concurrency", "2", "--log-level", "INFO"]
