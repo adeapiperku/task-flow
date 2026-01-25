@@ -72,7 +72,6 @@ class AutomationRuleResponse(AutomationRuleBase):
 # Dependencies
 from fastapi import Depends
 
-@asynccontextmanager
 async def get_uow():
     uow = SqlAlchemyUnitOfWork()
     try:
