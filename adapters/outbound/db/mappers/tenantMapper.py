@@ -1,4 +1,4 @@
-from adapters.outbound.db import TenantOrm
+from adapters.outbound.db.models.tenant import TenantOrm
 from domain.models.tenant import Tenant
 
 
